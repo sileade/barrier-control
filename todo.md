@@ -46,3 +46,11 @@
 - [x] Integrate notification into recognition flow
 - [x] Add notification settings UI (enable/disable, email address)
 - [x] Write unit tests for notification feature
+
+## Telegram Bot Integration
+- [x] Create Telegram notification service
+- [x] Add bot token and chat ID settings
+- [x] Integrate Telegram notifications with existing notification flow
+- [x] Add UI for Telegram configuration in Settings
+- [x] Add test notification button
+- [x] Write unit tests for Telegram integration

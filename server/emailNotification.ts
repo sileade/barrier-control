@@ -1,5 +1,6 @@
 import { notifyOwner } from "./_core/notification";
 import { getSetting } from "./db";
+import { telegramNotifyUnknownVehicle, telegramNotifyManualOpen, telegramNotifyUnauthorizedAccess } from "./telegramNotification";
 
 export type UnknownVehicleNotification = {
   licensePlate: string;
@@ -45,13 +46,18 @@ export async function notifyUnknownVehicle(data: UnknownVehicleNotification): Pr
   content += `Для добавления в базу перейдите в раздел "Vehicles" панели управления.`;
 
   try {
-    const result = await notifyOwner({ title, content });
-    if (result) {
+    // Send to Manus notification system
+    const manusResult = await notifyOwner({ title, content });
+    
+    // Send to Telegram
+    const telegramResult = await telegramNotifyUnknownVehicle(data);
+    
+    if (manusResult || telegramResult) {
       console.log(`[Notification] Unknown vehicle notification sent for ${data.licensePlate}`);
     } else {
       console.warn(`[Notification] Failed to send notification for ${data.licensePlate}`);
     }
-    return result;
+    return manusResult || telegramResult;
   } catch (error) {
     console.error('[Notification] Error sending unknown vehicle notification:', error);
     return false;
@@ -92,7 +98,13 @@ export async function notifyManualBarrierOpen(data: {
   }
 
   try {
-    return await notifyOwner({ title, content });
+    // Send to Manus notification system
+    const manusResult = await notifyOwner({ title, content });
+    
+    // Send to Telegram
+    const telegramResult = await telegramNotifyManualOpen(data);
+    
+    return manusResult || telegramResult;
   } catch (error) {
     console.error('[Notification] Error sending manual open notification:', error);
     return false;
@@ -137,7 +149,13 @@ export async function notifyUnauthorizedAccess(data: {
   content += `Рекомендуется проверить камеру видеонаблюдения.`;
 
   try {
-    return await notifyOwner({ title, content });
+    // Send to Manus notification system
+    const manusResult = await notifyOwner({ title, content });
+    
+    // Send to Telegram
+    const telegramResult = await telegramNotifyUnauthorizedAccess(data);
+    
+    return manusResult || telegramResult;
   } catch (error) {
     console.error('[Notification] Error sending unauthorized access notification:', error);
     return false;

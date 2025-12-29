@@ -16,6 +16,7 @@ import { notifyOwner } from "./_core/notification";
 import { notifyUnknownVehicle, notifyManualBarrierOpen } from "./emailNotification";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
+import { testTelegramConnection, getBotInfo } from "./telegramNotification";
 
 // Admin-only procedure
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -262,6 +263,26 @@ const barrierRouter = router({
     }),
 });
 
+// Telegram router - Telegram bot integration
+const telegramRouter = router({
+  testConnection: adminProcedure
+    .input(z.object({
+      botToken: z.string().min(1),
+      chatId: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      return testTelegramConnection(input.botToken, input.chatId);
+    }),
+  
+  getBotInfo: adminProcedure
+    .input(z.object({
+      botToken: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      return getBotInfo(input.botToken);
+    }),
+});
+
 // Recognition router - plate recognition using OpenAI Vision
 const recognitionRouter = router({
   analyze: protectedProcedure
@@ -404,6 +425,7 @@ export const appRouter = router({
   settings: settingsRouter,
   barrier: barrierRouter,
   recognition: recognitionRouter,
+  telegram: telegramRouter,
 });
 
 export type AppRouter = typeof appRouter;
