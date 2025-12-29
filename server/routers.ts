@@ -21,6 +21,13 @@ import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { testTelegramConnection, getBotInfo } from "./telegramNotification";
 import { notifyBlacklistDetection } from "./blacklistNotification";
+import { 
+  isQuietHoursActive, 
+  getQuietHoursConfig, 
+  sendPendingSummary, 
+  queueOrSendNotification 
+} from "./quietHours";
+import { getPendingNotifications, getPendingNotificationStats } from "./db";
 
 // Admin-only procedure
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -769,6 +776,67 @@ const recognitionRouter = router({
     }),
 });
 
+// Quiet Hours router
+const quietHoursRouter = router({
+  // Get current quiet hours configuration
+  getConfig: protectedProcedure.query(async () => {
+    return getQuietHoursConfig();
+  }),
+
+  // Update quiet hours settings
+  updateConfig: adminProcedure
+    .input(z.object({
+      enabled: z.boolean(),
+      startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+      endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+      bypassCritical: z.boolean(),
+    }))
+    .mutation(async ({ input }) => {
+      await upsertSetting('quietHoursEnabled', String(input.enabled), 'Enable quiet hours for notifications');
+      await upsertSetting('quietHoursStart', input.startTime, 'Quiet hours start time (HH:MM)');
+      await upsertSetting('quietHoursEnd', input.endTime, 'Quiet hours end time (HH:MM)');
+      await upsertSetting('quietHoursBypassCritical', String(input.bypassCritical), 'Allow critical notifications to bypass quiet hours');
+      return { success: true };
+    }),
+
+  // Check if quiet hours are currently active
+  isActive: protectedProcedure.query(async () => {
+    const isActive = await isQuietHoursActive();
+    const config = await getQuietHoursConfig();
+    return { isActive, config };
+  }),
+
+  // Get pending notifications
+  getPending: protectedProcedure.query(async () => {
+    const notifications = await getPendingNotifications(true);
+    const stats = await getPendingNotificationStats();
+    return { notifications, stats };
+  }),
+
+  // Manually send pending notifications summary
+  sendSummary: adminProcedure.mutation(async () => {
+    const result = await sendPendingSummary();
+    return result;
+  }),
+
+  // Test notification with quiet hours
+  testNotification: adminProcedure
+    .input(z.object({
+      title: z.string(),
+      message: z.string(),
+      severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await queueOrSendNotification({
+        type: 'unknown_vehicle',
+        title: input.title,
+        message: input.message,
+        severity: input.severity || 'medium',
+      });
+      return result;
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -788,6 +856,7 @@ export const appRouter = router({
   recognition: recognitionRouter,
   telegram: telegramRouter,
   blacklist: blacklistRouter,
+  quietHours: quietHoursRouter,
 });
 
 export type AppRouter = typeof appRouter;

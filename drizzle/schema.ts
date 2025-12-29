@@ -132,3 +132,22 @@ export const blacklist = mysqlTable("blacklist", {
 
 export type BlacklistEntry = typeof blacklist.$inferSelect;
 export type InsertBlacklistEntry = typeof blacklist.$inferInsert;
+
+/**
+ * Pending notifications table - stores notifications queued during quiet hours
+ */
+export const pendingNotifications = mysqlTable("pendingNotifications", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["unknown_vehicle", "blacklist_detected", "manual_open", "unauthorized_access"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  licensePlate: varchar("licensePlate", { length: 20 }),
+  photoUrl: text("photoUrl"),
+  severity: mysqlEnum("severity", ["low", "medium", "high", "critical"]).default("medium").notNull(),
+  isSent: boolean("isSent").default(false).notNull(),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PendingNotification = typeof pendingNotifications.$inferSelect;
+export type InsertPendingNotification = typeof pendingNotifications.$inferInsert;

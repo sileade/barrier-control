@@ -72,3 +72,12 @@
 - [x] Add preview before import
 - [x] Handle duplicates and errors during import
 - [x] Write unit tests for import/export
+
+## Quiet Hours Feature
+- [x] Create pending_notifications table for storing queued notifications
+- [x] Add quiet hours settings (start time, end time, enabled)
+- [x] Create notification queue service for accumulating notifications
+- [x] Add summary notification sender for end of quiet hours
+- [x] Allow critical notifications (high/critical blacklist) to bypass quiet hours
+- [x] Update Settings UI with quiet hours configuration
+- [x] Write unit tests for quiet hours feature

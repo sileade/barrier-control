@@ -27,7 +27,11 @@ import {
   XCircle,
   Loader2,
   Bot,
-  MessageCircle
+  MessageCircle,
+  Moon,
+  Clock,
+  BellOff,
+  Play
 } from "lucide-react";
 
 export default function Settings() {
@@ -53,6 +57,12 @@ export default function Settings() {
   const [telegramChatId, setTelegramChatId] = useState("");
   const [telegramBotName, setTelegramBotName] = useState("");
   const [telegramNotifyAllowed, setTelegramNotifyAllowed] = useState(false);
+  
+  // Quiet Hours settings
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
+  const [quietHoursStart, setQuietHoursStart] = useState("22:00");
+  const [quietHoursEnd, setQuietHoursEnd] = useState("07:00");
+  const [quietHoursBypassCritical, setQuietHoursBypassCritical] = useState(true);
 
   const { data: settings, isLoading } = trpc.settings.list.useQuery(undefined, {
     enabled: isAdmin,
@@ -81,6 +91,17 @@ export default function Settings() {
       if (tgBotToken?.value) setTelegramBotToken(tgBotToken.value);
       if (tgChatId?.value) setTelegramChatId(tgChatId.value);
       if (tgNotifyAllowed) setTelegramNotifyAllowed(tgNotifyAllowed.value === 'true');
+      
+      // Quiet Hours settings
+      const qhEnabled = settings.find(s => s.key === "quietHoursEnabled");
+      const qhStart = settings.find(s => s.key === "quietHoursStart");
+      const qhEnd = settings.find(s => s.key === "quietHoursEnd");
+      const qhBypass = settings.find(s => s.key === "quietHoursBypassCritical");
+      
+      if (qhEnabled) setQuietHoursEnabled(qhEnabled.value === 'true');
+      if (qhStart?.value) setQuietHoursStart(qhStart.value);
+      if (qhEnd?.value) setQuietHoursEnd(qhEnd.value);
+      if (qhBypass) setQuietHoursBypassCritical(qhBypass.value !== 'false');
     }
   }, [settings]);
 
@@ -120,6 +141,41 @@ export default function Settings() {
     onError: (error) => {
       toast.error(error.message || "Failed to verify bot token");
       setTelegramBotName("");
+    },
+  });
+
+  // Quiet Hours queries and mutations
+  const { data: quietHoursStatus } = trpc.quietHours.isActive.useQuery(undefined, {
+    enabled: isAdmin,
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  const { data: pendingNotifications } = trpc.quietHours.getPending.useQuery(undefined, {
+    enabled: isAdmin && quietHoursEnabled,
+  });
+
+  const updateQuietHoursMutation = trpc.quietHours.updateConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Quiet hours settings saved");
+      utils.settings.list.invalidate();
+      utils.quietHours.isActive.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to save quiet hours settings");
+    },
+  });
+
+  const sendSummaryMutation = trpc.quietHours.sendSummary.useMutation({
+    onSuccess: (result) => {
+      if (result.sent > 0) {
+        toast.success(`Summary sent successfully (${result.sent} channels)`);
+      } else {
+        toast.warning("No pending notifications to send");
+      }
+      utils.quietHours.getPending.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to send summary");
     },
   });
 
@@ -237,6 +293,19 @@ export default function Settings() {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('')}`;
     setMedicalApiKey(key);
+  };
+
+  const handleSaveQuietHours = () => {
+    updateQuietHoursMutation.mutate({
+      enabled: quietHoursEnabled,
+      startTime: quietHoursStart,
+      endTime: quietHoursEnd,
+      bypassCritical: quietHoursBypassCritical,
+    });
+  };
+
+  const handleSendSummaryNow = () => {
+    sendSummaryMutation.mutate();
   };
 
   if (!isAdmin) {
@@ -545,6 +614,161 @@ export default function Settings() {
                     <p className="text-xs text-muted-foreground mt-1">
                       Notifications are sent to the project owner via the Manus notification system.
                       You will receive alerts in your Manus dashboard and connected email.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quiet Hours */}
+          <Card className="border-purple-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Moon className="h-5 w-5 text-purple-500" />
+                Quiet Hours
+                {quietHoursStatus?.isActive && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-purple-500/20 text-purple-500 rounded-full">
+                    Active Now
+                  </span>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Accumulate notifications during specified hours and send a summary afterwards
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Master toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                <div className="flex items-center gap-3">
+                  <BellOff className="h-5 w-5 text-purple-500" />
+                  <div>
+                    <Label htmlFor="quiet-hours-enabled" className="text-base font-medium">
+                      Enable Quiet Hours
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Queue notifications during quiet hours instead of sending immediately
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="quiet-hours-enabled"
+                  checked={quietHoursEnabled}
+                  onCheckedChange={setQuietHoursEnabled}
+                />
+              </div>
+
+              {/* Time settings */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="quiet-start" className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Start Time
+                  </Label>
+                  <Input
+                    id="quiet-start"
+                    type="time"
+                    value={quietHoursStart}
+                    onChange={(e) => setQuietHoursStart(e.target.value)}
+                    disabled={!quietHoursEnabled}
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quiet-end" className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    End Time
+                  </Label>
+                  <Input
+                    id="quiet-end"
+                    type="time"
+                    value={quietHoursEnd}
+                    onChange={(e) => setQuietHoursEnd(e.target.value)}
+                    disabled={!quietHoursEnabled}
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Bypass critical */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-red-500/10 flex items-center justify-center">
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                  </div>
+                  <div>
+                    <Label htmlFor="bypass-critical" className="font-medium">
+                      Bypass for Critical Alerts
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Send high/critical severity notifications immediately
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="bypass-critical"
+                  checked={quietHoursBypassCritical}
+                  onCheckedChange={setQuietHoursBypassCritical}
+                  disabled={!quietHoursEnabled}
+                />
+              </div>
+
+              {/* Pending notifications info */}
+              {quietHoursEnabled && pendingNotifications && (
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Pending Notifications</p>
+                      <p className="text-2xl font-bold text-purple-500">
+                        {pendingNotifications.stats.pending || 0}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Will be sent as summary when quiet hours end
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={handleSendSummaryNow}
+                      disabled={sendSummaryMutation.isPending || !pendingNotifications.stats.pending}
+                    >
+                      {sendSummaryMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Play className="h-4 w-4 mr-2" />
+                      )}
+                      Send Now
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Save button */}
+              <Button
+                onClick={handleSaveQuietHours}
+                disabled={updateQuietHoursMutation.isPending}
+                className="w-full"
+              >
+                {updateQuietHoursMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save Quiet Hours Settings
+              </Button>
+
+              {/* Info box */}
+              <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                <div className="flex items-start gap-3">
+                  <Moon className="h-5 w-5 text-purple-500 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">How Quiet Hours Work</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      During quiet hours ({quietHoursStart} - {quietHoursEnd}), notifications are queued 
+                      instead of being sent immediately. When quiet hours end, a summary of all 
+                      accumulated notifications is sent. Critical alerts (blacklisted vehicles with 
+                      high/critical severity) can bypass quiet hours if enabled.
                     </p>
                   </div>
                 </div>

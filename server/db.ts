@@ -7,7 +7,8 @@ import {
   medicalRecords, InsertMedicalRecord, MedicalRecord,
   settings, InsertSetting, Setting,
   barrierActions, InsertBarrierAction, BarrierAction,
-  blacklist, InsertBlacklistEntry, BlacklistEntry
+  blacklist, InsertBlacklistEntry, BlacklistEntry,
+  pendingNotifications, InsertPendingNotification, PendingNotification
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -458,4 +459,66 @@ export async function getBlacklistStats() {
   }).from(blacklist);
   
   return result[0] || { total: 0, active: 0, totalAttempts: 0 };
+}
+
+// ============ PENDING NOTIFICATIONS OPERATIONS ============
+
+export async function createPendingNotification(notification: InsertPendingNotification) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(pendingNotifications).values(notification);
+  return { id: Number(result[0].insertId) };
+}
+
+export async function getPendingNotifications(onlyUnsent = true) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  if (onlyUnsent) {
+    return db.select().from(pendingNotifications)
+      .where(eq(pendingNotifications.isSent, false))
+      .orderBy(desc(pendingNotifications.createdAt));
+  }
+  return db.select().from(pendingNotifications).orderBy(desc(pendingNotifications.createdAt));
+}
+
+export async function markNotificationsSent(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  for (const id of ids) {
+    await db.update(pendingNotifications)
+      .set({ isSent: true, sentAt: new Date() })
+      .where(eq(pendingNotifications.id, id));
+  }
+  return true;
+}
+
+export async function deleteSentNotifications(olderThanDays = 7) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+  
+  await db.delete(pendingNotifications)
+    .where(and(
+      eq(pendingNotifications.isSent, true),
+      lte(pendingNotifications.sentAt, cutoffDate)
+    ));
+  return true;
+}
+
+export async function getPendingNotificationStats() {
+  const db = await getDb();
+  if (!db) return { pending: 0, sent: 0, total: 0 };
+  
+  const result = await db.select({
+    pending: sql<number>`SUM(CASE WHEN isSent = false THEN 1 ELSE 0 END)`,
+    sent: sql<number>`SUM(CASE WHEN isSent = true THEN 1 ELSE 0 END)`,
+    total: sql<number>`COUNT(*)`,
+  }).from(pendingNotifications);
+  
+  return result[0] || { pending: 0, sent: 0, total: 0 };
 }
