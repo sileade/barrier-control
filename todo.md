@@ -63,3 +63,12 @@
 - [x] Create Blacklist management page UI
 - [x] Add blacklist navigation item to sidebar
 - [x] Write unit tests for blacklist feature
+
+## CSV Import/Export Feature
+- [x] Create export API endpoint for blacklist
+- [x] Create import API endpoint with validation
+- [x] Add export button to Blacklist page
+- [x] Add import dialog with file upload
+- [x] Add preview before import
+- [x] Handle duplicates and errors during import
+- [x] Write unit tests for import/export

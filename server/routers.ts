@@ -360,7 +360,239 @@ const blacklistRouter = router({
     .mutation(async ({ input }) => {
       return deleteBlacklistEntry(input.id);
     }),
+  
+  // Export blacklist to CSV format
+  export: protectedProcedure
+    .input(z.object({ includeInactive: z.boolean().optional() }).optional())
+    .query(async ({ input }) => {
+      const entries = await getAllBlacklistEntries(input?.includeInactive ?? false);
+      
+      // CSV header
+      const headers = [
+        'licensePlate',
+        'severity',
+        'reason',
+        'ownerName',
+        'vehicleModel',
+        'vehicleColor',
+        'notifyOnDetection',
+        'attemptCount',
+        'isActive',
+        'expiresAt',
+        'createdAt'
+      ];
+      
+      // Convert entries to CSV rows
+      const rows = entries.map(entry => [
+        entry.licensePlate,
+        entry.severity,
+        (entry.reason || '').replace(/["\n\r]/g, ' '),
+        (entry.ownerName || '').replace(/["\n\r]/g, ' '),
+        (entry.vehicleModel || '').replace(/["\n\r]/g, ' '),
+        (entry.vehicleColor || '').replace(/["\n\r]/g, ' '),
+        entry.notifyOnDetection ? 'true' : 'false',
+        entry.attemptCount.toString(),
+        entry.isActive ? 'true' : 'false',
+        entry.expiresAt ? entry.expiresAt.toISOString() : '',
+        entry.createdAt.toISOString()
+      ]);
+      
+      // Build CSV content
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+      
+      return {
+        csv: csvContent,
+        count: entries.length,
+        filename: `blacklist_export_${new Date().toISOString().split('T')[0]}.csv`
+      };
+    }),
+  
+  // Import blacklist from CSV data
+  import: adminProcedure
+    .input(z.object({
+      csvData: z.string(),
+      skipDuplicates: z.boolean().optional(),
+      updateExisting: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { csvData, skipDuplicates = true, updateExisting = false } = input;
+      
+      // Parse CSV
+      const lines = csvData.trim().split('\n');
+      if (lines.length < 2) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'CSV file is empty or has no data rows' });
+      }
+      
+      // Parse header
+      const headerLine = lines[0];
+      const headers = parseCSVLine(headerLine);
+      
+      const requiredFields = ['licensePlate'];
+      const missingFields = requiredFields.filter(f => !headers.includes(f));
+      if (missingFields.length > 0) {
+        throw new TRPCError({ 
+          code: 'BAD_REQUEST', 
+          message: `Missing required fields: ${missingFields.join(', ')}` 
+        });
+      }
+      
+      const results = {
+        imported: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [] as { row: number; plate: string; error: string }[]
+      };
+      
+      // Process each row
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        try {
+          const values = parseCSVLine(line);
+          const rowData: Record<string, string> = {};
+          headers.forEach((header, index) => {
+            rowData[header] = values[index] || '';
+          });
+          
+          const licensePlate = rowData.licensePlate?.toUpperCase().replace(/\s/g, '');
+          if (!licensePlate) {
+            results.errors.push({ row: i + 1, plate: '', error: 'Empty license plate' });
+            continue;
+          }
+          
+          // Check if plate already exists
+          const existing = await getBlacklistEntryByPlate(licensePlate);
+          
+          if (existing) {
+            if (updateExisting) {
+              // Update existing entry
+              await updateBlacklistEntry(existing.id, {
+                reason: rowData.reason || existing.reason,
+                severity: (rowData.severity as any) || existing.severity,
+                ownerName: rowData.ownerName || existing.ownerName,
+                vehicleModel: rowData.vehicleModel || existing.vehicleModel,
+                vehicleColor: rowData.vehicleColor || existing.vehicleColor,
+                notifyOnDetection: rowData.notifyOnDetection === 'true' ? true : 
+                                   rowData.notifyOnDetection === 'false' ? false : existing.notifyOnDetection,
+              });
+              results.updated++;
+            } else if (skipDuplicates) {
+              results.skipped++;
+            } else {
+              results.errors.push({ row: i + 1, plate: licensePlate, error: 'Duplicate plate' });
+            }
+            continue;
+          }
+          
+          // Create new entry
+          await createBlacklistEntry({
+            licensePlate,
+            reason: rowData.reason || undefined,
+            severity: (['low', 'medium', 'high', 'critical'].includes(rowData.severity) 
+              ? rowData.severity as 'low' | 'medium' | 'high' | 'critical' 
+              : 'medium'),
+            ownerName: rowData.ownerName || undefined,
+            vehicleModel: rowData.vehicleModel || undefined,
+            vehicleColor: rowData.vehicleColor || undefined,
+            notifyOnDetection: rowData.notifyOnDetection !== 'false',
+            addedBy: ctx.user.id,
+          });
+          results.imported++;
+          
+        } catch (error) {
+          results.errors.push({ 
+            row: i + 1, 
+            plate: 'unknown', 
+            error: error instanceof Error ? error.message : 'Unknown error' 
+          });
+        }
+      }
+      
+      return results;
+    }),
+  
+  // Preview import without actually importing
+  previewImport: adminProcedure
+    .input(z.object({ csvData: z.string() }))
+    .mutation(async ({ input }) => {
+      const { csvData } = input;
+      
+      const lines = csvData.trim().split('\n');
+      if (lines.length < 2) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'CSV file is empty or has no data rows' });
+      }
+      
+      const headers = parseCSVLine(lines[0]);
+      
+      const preview = {
+        headers,
+        totalRows: lines.length - 1,
+        sampleRows: [] as Record<string, string>[],
+        duplicates: 0,
+        newEntries: 0,
+        hasRequiredFields: headers.includes('licensePlate'),
+      };
+      
+      // Process sample rows (max 10)
+      const sampleCount = Math.min(lines.length - 1, 10);
+      for (let i = 1; i <= sampleCount; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const values = parseCSVLine(line);
+        const rowData: Record<string, string> = {};
+        headers.forEach((header, index) => {
+          rowData[header] = values[index] || '';
+        });
+        preview.sampleRows.push(rowData);
+        
+        // Check for duplicates
+        const plate = rowData.licensePlate?.toUpperCase().replace(/\s/g, '');
+        if (plate) {
+          const existing = await getBlacklistEntryByPlate(plate);
+          if (existing) {
+            preview.duplicates++;
+          } else {
+            preview.newEntries++;
+          }
+        }
+      }
+      
+      return preview;
+    }),
 });
+
+// Helper function to parse CSV line handling quoted values
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  
+  result.push(current.trim());
+  return result;
+}
 
 // Recognition router - plate recognition using OpenAI Vision
 const recognitionRouter = router({
