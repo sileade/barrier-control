@@ -17,19 +17,49 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { 
   Camera, 
   DoorOpen, 
   Shield, 
-  ShieldAlert, 
   Scan,
   Settings,
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Grid2X2,
+  Grid3X3,
+  Square,
+  Maximize2,
+  Minimize2,
+  Star,
+  StarOff,
+  Wifi,
+  WifiOff
 } from "lucide-react";
+
+type ViewMode = "single" | "grid2x2" | "grid3x3";
+
+interface CameraFeed {
+  id: number;
+  name: string;
+  url: string;
+  isPrimary: boolean;
+  status: "online" | "offline" | "error";
+}
 
 export default function BarrierControl() {
   const { user } = useAuth();
@@ -39,6 +69,9 @@ export default function BarrierControl() {
   const [isOpenDialogOpen, setIsOpenDialogOpen] = useState(false);
   const [autoOpen, setAutoOpen] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("single");
+  const [selectedCamera, setSelectedCamera] = useState<number | null>(null);
+  const [fullscreenCamera, setFullscreenCamera] = useState<number | null>(null);
   const [lastResult, setLastResult] = useState<{
     plate: string | null;
     confidence: number;
@@ -46,16 +79,44 @@ export default function BarrierControl() {
     barrierOpened: boolean | undefined;
   } | null>(null);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map());
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const { data: cameraSetting } = trpc.settings.get.useQuery({ key: "camera_url" });
+  const { data: cameraIntegrations } = trpc.cameraIntegrations.list.useQuery();
+  
+  // Build camera list from integrations
+  const cameras: CameraFeed[] = cameraIntegrations?.map(cam => ({
+    id: cam.id,
+    name: cam.name,
+    url: cam.rtspUrl || cam.httpSnapshotUrl || (cam.host ? `http://${cam.host}:${cam.port || 80}/stream` : ""),
+    isPrimary: cam.isPrimary || false,
+    status: cam.isActive ? "online" : "offline"
+  })) || [];
+
+  // If no integrations, use legacy camera URL
+  const legacyCamera: CameraFeed | null = cameraSetting?.value ? {
+    id: 0,
+    name: "Main Camera",
+    url: cameraSetting.value,
+    isPrimary: true,
+    status: "online"
+  } : null;
+
+  const allCameras = cameras.length > 0 ? cameras : (legacyCamera ? [legacyCamera] : []);
+  const primaryCamera = allCameras.find(c => c.isPrimary) || allCameras[0];
   
   useEffect(() => {
     if (cameraSetting?.value) {
       setCameraUrl(cameraSetting.value);
     }
   }, [cameraSetting]);
+
+  useEffect(() => {
+    if (primaryCamera && selectedCamera === null) {
+      setSelectedCamera(primaryCamera.id);
+    }
+  }, [primaryCamera, selectedCamera]);
 
   const openBarrierMutation = trpc.barrier.open.useMutation({
     onSuccess: () => {
@@ -101,7 +162,7 @@ export default function BarrierControl() {
     },
   });
 
-  const captureAndRecognize = useCallback(async () => {
+  const captureAndRecognize = useCallback(async (cameraId?: number) => {
     if (!canvasRef.current) return;
     
     setIsScanning(true);
@@ -116,11 +177,15 @@ export default function BarrierControl() {
       return;
     }
 
+    // Get the video element for the specified camera or primary camera
+    const targetCameraId = cameraId ?? selectedCamera ?? primaryCamera?.id;
+    const videoRef = targetCameraId !== undefined ? videoRefs.current.get(targetCameraId) : null;
+
     // If video is available, capture from it
-    if (videoRef.current && videoRef.current.readyState >= 2) {
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      ctx.drawImage(videoRef.current, 0, 0);
+    if (videoRef && videoRef.readyState >= 2) {
+      canvas.width = videoRef.videoWidth || 640;
+      canvas.height = videoRef.videoHeight || 480;
+      ctx.drawImage(videoRef, 0, 0);
     } else {
       // Demo mode - create a placeholder image
       canvas.width = 640;
@@ -136,7 +201,7 @@ export default function BarrierControl() {
 
     const imageBase64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
     recognizeMutation.mutate({ imageBase64, autoOpen });
-  }, [autoOpen, recognizeMutation]);
+  }, [autoOpen, recognizeMutation, selectedCamera, primaryCamera]);
 
   const handleManualOpen = () => {
     setIsOpenDialogOpen(true);
@@ -157,61 +222,287 @@ export default function BarrierControl() {
     }
   };
 
+  const setVideoRef = (id: number, el: HTMLVideoElement | null) => {
+    if (el) {
+      videoRefs.current.set(id, el);
+    } else {
+      videoRefs.current.delete(id);
+    }
+  };
+
+  const getGridClass = () => {
+    switch (viewMode) {
+      case "grid2x2":
+        return "grid grid-cols-2 gap-2";
+      case "grid3x3":
+        return "grid grid-cols-3 gap-2";
+      default:
+        return "";
+    }
+  };
+
+  const getCamerasToShow = () => {
+    if (viewMode === "single") {
+      const cam = allCameras.find(c => c.id === selectedCamera) || primaryCamera;
+      return cam ? [cam] : [];
+    }
+    return allCameras;
+  };
+
+  const renderCameraFeed = (camera: CameraFeed, isFullscreen: boolean = false) => {
+    const isSelected = selectedCamera === camera.id;
+    const isPrimary = camera.isPrimary;
+    
+    return (
+      <div 
+        key={camera.id}
+        className={`relative aspect-video bg-black rounded-lg overflow-hidden cursor-pointer transition-all ${
+          isSelected && viewMode !== "single" ? "ring-2 ring-primary" : ""
+        } ${isFullscreen ? "fixed inset-4 z-50 aspect-auto" : ""}`}
+        onClick={() => {
+          if (viewMode !== "single") {
+            setSelectedCamera(camera.id);
+          }
+        }}
+      >
+        {/* Camera status indicator */}
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
+          <Badge 
+            variant="outline" 
+            className={`bg-black/50 backdrop-blur-sm ${
+              camera.status === "online" ? "border-green-500 text-green-500" :
+              camera.status === "offline" ? "border-gray-500 text-gray-500" :
+              "border-red-500 text-red-500"
+            }`}
+          >
+            {camera.status === "online" ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+            {camera.name}
+          </Badge>
+          {isPrimary && (
+            <Badge className="bg-yellow-500/80 text-black">
+              <Star className="h-3 w-3 mr-1" />
+              Primary
+            </Badge>
+          )}
+        </div>
+
+        {/* Fullscreen toggle */}
+        <div className="absolute top-2 right-2 z-10">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 bg-black/50 backdrop-blur-sm hover:bg-black/70"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenCamera(fullscreenCamera === camera.id ? null : camera.id);
+                }}
+              >
+                {fullscreenCamera === camera.id ? (
+                  <Minimize2 className="h-4 w-4 text-white" />
+                ) : (
+                  <Maximize2 className="h-4 w-4 text-white" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {fullscreenCamera === camera.id ? "Exit fullscreen" : "Fullscreen"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
+        {/* Scan button overlay */}
+        {viewMode !== "single" && (
+          <div className="absolute bottom-2 right-2 z-10">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 bg-black/50 backdrop-blur-sm hover:bg-black/70"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    captureAndRecognize(camera.id);
+                  }}
+                  disabled={isScanning}
+                >
+                  <Scan className="h-4 w-4 text-white" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Scan from this camera</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
+        {camera.url ? (
+          <video
+            ref={(el) => setVideoRef(camera.id, el)}
+            src={camera.url}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-contain"
+            onError={() => toast.error(`Failed to load stream: ${camera.name}`)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
+            <Camera className="h-12 w-12 mb-2 opacity-50" />
+            <p className="text-sm">{camera.name}</p>
+            <p className="text-xs">No stream URL</p>
+          </div>
+        )}
+        
+        {/* Scanning overlay */}
+        {isScanning && selectedCamera === camera.id && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <div className="text-center text-white">
+              <Scan className="h-12 w-12 mx-auto mb-2 animate-pulse" />
+              <p className="text-sm font-medium">Scanning...</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Fullscreen overlay
+  if (fullscreenCamera !== null) {
+    const camera = allCameras.find(c => c.id === fullscreenCamera);
+    if (camera) {
+      return (
+        <div className="fixed inset-0 z-50 bg-black">
+          {renderCameraFeed(camera, true)}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+            <Button onClick={() => captureAndRecognize(camera.id)} disabled={isScanning}>
+              <Scan className="h-4 w-4 mr-2" />
+              Scan Plate
+            </Button>
+            <Button variant="destructive" onClick={handleManualOpen}>
+              <DoorOpen className="h-4 w-4 mr-2" />
+              Manual Open
+            </Button>
+            <Button variant="outline" onClick={() => setFullscreenCamera(null)}>
+              <Minimize2 className="h-4 w-4 mr-2" />
+              Exit Fullscreen
+            </Button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Barrier Control</h1>
-          <p className="text-muted-foreground">Monitor camera and control barrier access</p>
+          <p className="text-muted-foreground">Monitor cameras and control barrier access</p>
         </div>
-        <Badge variant="outline" className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${cameraUrl ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`} />
-          {cameraUrl ? "Camera Connected" : "No Camera"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {/* View mode selector */}
+          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={viewMode === "single" ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setViewMode("single")}
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Single camera</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={viewMode === "grid2x2" ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setViewMode("grid2x2")}
+                  disabled={allCameras.length < 2}
+                >
+                  <Grid2X2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>2x2 Grid</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={viewMode === "grid3x3" ? "default" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setViewMode("grid3x3")}
+                  disabled={allCameras.length < 3}
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>3x3 Grid</TooltipContent>
+            </Tooltip>
+          </div>
+          
+          <Badge variant="outline" className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${allCameras.length > 0 ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`} />
+            {allCameras.length} Camera{allCameras.length !== 1 ? 's' : ''}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Camera Feed */}
+        {/* Camera Feed(s) */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Camera className="h-5 w-5" />
-              Live Camera Feed
-            </CardTitle>
-            <CardDescription>
-              Real-time video stream from the entrance camera
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-              {cameraUrl ? (
-                <video
-                  ref={videoRef}
-                  src={cameraUrl}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-contain"
-                  onError={() => toast.error("Failed to load camera stream")}
-                />
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-                  <Camera className="h-16 w-16 mb-4 opacity-50" />
-                  <p>No camera configured</p>
-                  <p className="text-sm">Enter camera URL in settings below</p>
-                </div>
-              )}
-              
-              {/* Scanning overlay */}
-              {isScanning && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <Scan className="h-16 w-16 mx-auto mb-4 animate-pulse" />
-                    <p className="text-lg font-medium">Scanning license plate...</p>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  {viewMode === "single" ? "Live Camera Feed" : "Multi-Camera View"}
+                </CardTitle>
+                <CardDescription>
+                  {viewMode === "single" 
+                    ? "Real-time video stream from the selected camera"
+                    : `Viewing ${getCamerasToShow().length} camera${getCamerasToShow().length !== 1 ? 's' : ''}`
+                  }
+                </CardDescription>
+              </div>
+              {viewMode === "single" && allCameras.length > 1 && (
+                <Select
+                  value={selectedCamera?.toString()}
+                  onValueChange={(val) => setSelectedCamera(parseInt(val))}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select camera" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allCameras.map(cam => (
+                      <SelectItem key={cam.id} value={cam.id.toString()}>
+                        <div className="flex items-center gap-2">
+                          {cam.isPrimary && <Star className="h-3 w-3 text-yellow-500" />}
+                          {cam.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
+          </CardHeader>
+          <CardContent>
+            {allCameras.length === 0 ? (
+              <div className="aspect-video bg-black rounded-lg flex flex-col items-center justify-center text-muted-foreground">
+                <Camera className="h-16 w-16 mb-4 opacity-50" />
+                <p>No cameras configured</p>
+                <p className="text-sm">Go to Integrations to add cameras</p>
+              </div>
+            ) : (
+              <div className={getGridClass()}>
+                {getCamerasToShow().map(camera => renderCameraFeed(camera))}
+              </div>
+            )}
             
             {/* Hidden canvas for capture */}
             <canvas ref={canvasRef} className="hidden" />
@@ -219,8 +510,8 @@ export default function BarrierControl() {
             {/* Control buttons */}
             <div className="flex flex-wrap gap-3 mt-4">
               <Button 
-                onClick={captureAndRecognize} 
-                disabled={isScanning}
+                onClick={() => captureAndRecognize()} 
+                disabled={isScanning || allCameras.length === 0}
                 className="flex-1"
               >
                 <Scan className="h-4 w-4 mr-2" />
@@ -323,9 +614,9 @@ export default function BarrierControl() {
                 />
               </div>
               
-              {user?.role === "admin" && (
+              {user?.role === "admin" && allCameras.length === 0 && (
                 <div className="space-y-2 pt-4 border-t">
-                  <Label htmlFor="camera-url">Camera URL</Label>
+                  <Label htmlFor="camera-url">Legacy Camera URL</Label>
                   <div className="flex gap-2">
                     <Input
                       id="camera-url"
@@ -343,20 +634,20 @@ export default function BarrierControl() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Enter IP camera stream URL (RTSP/HTTP)
+                    Use Integrations page for advanced camera setup
                   </p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Quick Stats */}
+          {/* Quick Actions */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full justify-start" onClick={captureAndRecognize}>
+              <Button variant="outline" className="w-full justify-start" onClick={() => captureAndRecognize()}>
                 <Scan className="h-4 w-4 mr-2" />
                 Quick Scan
               </Button>
