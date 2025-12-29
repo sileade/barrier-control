@@ -7,16 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { 
   Settings as SettingsIcon, 
   Camera, 
-  Key, 
   Save,
   RefreshCw,
   Shield,
   Database,
-  Bell
+  Bell,
+  Mail,
+  Car,
+  DoorOpen,
+  AlertTriangle,
+  Calendar
 } from "lucide-react";
 
 export default function Settings() {
@@ -26,7 +31,10 @@ export default function Settings() {
 
   const [cameraUrl, setCameraUrl] = useState("");
   const [medicalApiKey, setMedicalApiKey] = useState("");
-  const [notificationEmail, setNotificationEmail] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [unknownVehicleNotify, setUnknownVehicleNotify] = useState(true);
+  const [manualOpenNotify, setManualOpenNotify] = useState(true);
+  const [dailySummaryEnabled, setDailySummaryEnabled] = useState(false);
 
   const { data: settings, isLoading } = trpc.settings.list.useQuery(undefined, {
     enabled: isAdmin,
@@ -36,11 +44,17 @@ export default function Settings() {
     if (settings) {
       const camera = settings.find(s => s.key === "camera_url");
       const apiKey = settings.find(s => s.key === "medical_api_key");
-      const email = settings.find(s => s.key === "notification_email");
+      const notifEnabled = settings.find(s => s.key === "notifications_enabled");
+      const unknownNotify = settings.find(s => s.key === "unknown_vehicle_notify");
+      const manualNotify = settings.find(s => s.key === "manual_open_notify");
+      const dailySummary = settings.find(s => s.key === "daily_summary_enabled");
       
       if (camera?.value) setCameraUrl(camera.value);
       if (apiKey?.value) setMedicalApiKey(apiKey.value);
-      if (email?.value) setNotificationEmail(email.value);
+      if (notifEnabled) setNotificationsEnabled(notifEnabled.value !== 'false');
+      if (unknownNotify) setUnknownVehicleNotify(unknownNotify.value !== 'false');
+      if (manualNotify) setManualOpenNotify(manualNotify.value !== 'false');
+      if (dailySummary) setDailySummaryEnabled(dailySummary.value === 'true');
     }
   }, [settings]);
 
@@ -70,11 +84,39 @@ export default function Settings() {
     });
   };
 
-  const handleSaveEmail = () => {
+  const handleToggleNotifications = (enabled: boolean) => {
+    setNotificationsEnabled(enabled);
     saveMutation.mutate({
-      key: "notification_email",
-      value: notificationEmail,
-      description: "Email for system notifications",
+      key: "notifications_enabled",
+      value: enabled.toString(),
+      description: "Enable/disable all notifications",
+    });
+  };
+
+  const handleToggleUnknownVehicle = (enabled: boolean) => {
+    setUnknownVehicleNotify(enabled);
+    saveMutation.mutate({
+      key: "unknown_vehicle_notify",
+      value: enabled.toString(),
+      description: "Notify when unknown vehicle is detected",
+    });
+  };
+
+  const handleToggleManualOpen = (enabled: boolean) => {
+    setManualOpenNotify(enabled);
+    saveMutation.mutate({
+      key: "manual_open_notify",
+      value: enabled.toString(),
+      description: "Notify when barrier is manually opened",
+    });
+  };
+
+  const handleToggleDailySummary = (enabled: boolean) => {
+    setDailySummaryEnabled(enabled);
+    saveMutation.mutate({
+      key: "daily_summary_enabled",
+      value: enabled.toString(),
+      description: "Send daily activity summary",
     });
   };
 
@@ -110,12 +152,138 @@ export default function Settings() {
 
       {isLoading ? (
         <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
+          {[...Array(4)].map((_, i) => (
             <Skeleton key={i} className="h-48 w-full" />
           ))}
         </div>
       ) : (
         <div className="grid gap-6">
+          {/* Notifications */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Email Notifications
+              </CardTitle>
+              <CardDescription>
+                Configure email alerts for security events
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Master toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-3">
+                  <Mail className="h-5 w-5 text-primary" />
+                  <div>
+                    <Label htmlFor="notifications-enabled" className="text-base font-medium">
+                      Enable Notifications
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Master switch for all email notifications
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="notifications-enabled"
+                  checked={notificationsEnabled}
+                  onCheckedChange={handleToggleNotifications}
+                  disabled={saveMutation.isPending}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Individual notification settings */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-muted-foreground">Notification Types</h4>
+                
+                {/* Unknown vehicle notification */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <Car className="h-4 w-4 text-orange-500" />
+                    </div>
+                    <div>
+                      <Label htmlFor="unknown-vehicle" className="font-medium">
+                        Unknown Vehicle Detected
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Alert when unregistered vehicle attempts access
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="unknown-vehicle"
+                    checked={unknownVehicleNotify}
+                    onCheckedChange={handleToggleUnknownVehicle}
+                    disabled={!notificationsEnabled || saveMutation.isPending}
+                  />
+                </div>
+
+                {/* Manual open notification */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                      <DoorOpen className="h-4 w-4 text-yellow-500" />
+                    </div>
+                    <div>
+                      <Label htmlFor="manual-open" className="font-medium">
+                        Manual Barrier Open
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Alert when barrier is manually activated
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="manual-open"
+                    checked={manualOpenNotify}
+                    onCheckedChange={handleToggleManualOpen}
+                    disabled={!notificationsEnabled || saveMutation.isPending}
+                  />
+                </div>
+
+                {/* Daily summary */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                      <Calendar className="h-4 w-4 text-blue-500" />
+                    </div>
+                    <div>
+                      <Label htmlFor="daily-summary" className="font-medium">
+                        Daily Summary
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Receive daily activity report
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="daily-summary"
+                    checked={dailySummaryEnabled}
+                    onCheckedChange={handleToggleDailySummary}
+                    disabled={!notificationsEnabled || saveMutation.isPending}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-primary mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Notification Delivery</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notifications are sent to the project owner via the Manus notification system.
+                      You will receive alerts in your Manus dashboard and connected email.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Camera Settings */}
           <Card>
             <CardHeader>
@@ -219,53 +387,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* Notifications */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                Notifications
-              </CardTitle>
-              <CardDescription>
-                Configure system notifications and alerts
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="notification-email">Notification Email</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="notification-email"
-                    type="email"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    placeholder="admin@example.com"
-                    className="flex-1"
-                  />
-                  <Button onClick={handleSaveEmail} disabled={saveMutation.isPending}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Email address for receiving system alerts and notifications about unauthorized access attempts.
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Notification Events</Label>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Unknown vehicle detected</li>
-                  <li>• Manual barrier activation</li>
-                  <li>• System errors and warnings</li>
-                  <li>• Daily activity summary</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* System Info */}
           <Card>
             <CardHeader>
@@ -278,7 +399,7 @@ export default function Settings() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Version:</span>
-                  <span className="ml-2 font-medium">1.0.0</span>
+                  <span className="ml-2 font-medium">1.1.0</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">User:</span>

@@ -11,6 +11,13 @@ vi.mock("./db", () => ({
   getDailyPassageStats: vi.fn(),
   logBarrierAction: vi.fn(),
   getBarrierActions: vi.fn(),
+  getSetting: vi.fn(),
+}));
+
+// Mock the email notification module
+vi.mock("./emailNotification", () => ({
+  notifyUnknownVehicle: vi.fn().mockResolvedValue(true),
+  notifyManualBarrierOpen: vi.fn().mockResolvedValue(true),
 }));
 
 import * as db from "./db";

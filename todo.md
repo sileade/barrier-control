@@ -40,3 +40,9 @@
 - [x] Unit tests for passage logging
 - [x] Unit tests for barrier control flow
 - [ ] Integration tests for plate recognition (requires camera)
+
+## Email Notifications Feature
+- [x] Create email notification service for unknown vehicles
+- [x] Integrate notification into recognition flow
+- [x] Add notification settings UI (enable/disable, email address)
+- [x] Write unit tests for notification feature

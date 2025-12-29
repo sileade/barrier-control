@@ -13,6 +13,7 @@ import {
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { notifyOwner } from "./_core/notification";
+import { notifyUnknownVehicle, notifyManualBarrierOpen } from "./emailNotification";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 
@@ -241,6 +242,14 @@ const barrierRouter = router({
         success: true,
       });
       
+      // Send notification about manual barrier open
+      await notifyManualBarrierOpen({
+        userName: ctx.user.name || ctx.user.email || 'Unknown',
+        userId: ctx.user.id,
+        timestamp: new Date(),
+        notes: input.notes,
+      });
+      
       // Here you would integrate with actual barrier hardware
       // For now, we simulate success
       return { success: true, message: 'Barrier opened successfully' };
@@ -351,9 +360,11 @@ const recognitionRouter = router({
         
         // Notify owner for unknown plates
         if (!isAllowed && result.plate) {
-          await notifyOwner({
-            title: '🚗 Unknown Vehicle Detected',
-            content: `License plate: ${result.plate}\nConfidence: ${result.confidence}%\nTime: ${new Date().toLocaleString()}`
+          await notifyUnknownVehicle({
+            licensePlate: result.plate,
+            confidence: result.confidence,
+            photoUrl,
+            timestamp: new Date(),
           });
         }
         
