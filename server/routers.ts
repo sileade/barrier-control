@@ -9,7 +9,10 @@ import {
   getPassages, getPassageById, createPassage, getPassageStats, getDailyPassageStats,
   getMedicalRecords, getMedicalRecordByPlate, upsertMedicalRecord, deleteMedicalRecord,
   getSetting, getAllSettings, upsertSetting,
-  logBarrierAction, getBarrierActions
+  logBarrierAction, getBarrierActions,
+  getAllBlacklistEntries, getBlacklistEntryById, getBlacklistEntryByPlate, 
+  createBlacklistEntry, updateBlacklistEntry, deleteBlacklistEntry,
+  isPlateBlacklisted, incrementBlacklistAttempt, getBlacklistStats
 } from "./db";
 import { invokeLLM } from "./_core/llm";
 import { notifyOwner } from "./_core/notification";
@@ -17,6 +20,7 @@ import { notifyUnknownVehicle, notifyManualBarrierOpen } from "./emailNotificati
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { testTelegramConnection, getBotInfo } from "./telegramNotification";
+import { notifyBlacklistDetection } from "./blacklistNotification";
 
 // Admin-only procedure
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -283,6 +287,81 @@ const telegramRouter = router({
     }),
 });
 
+// Blacklist router - manage blocked vehicles
+const blacklistRouter = router({
+  list: protectedProcedure
+    .input(z.object({ includeInactive: z.boolean().optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllBlacklistEntries(input?.includeInactive ?? false);
+    }),
+  
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getBlacklistEntryById(input.id);
+    }),
+  
+  getByPlate: protectedProcedure
+    .input(z.object({ licensePlate: z.string() }))
+    .query(async ({ input }) => {
+      return getBlacklistEntryByPlate(input.licensePlate);
+    }),
+  
+  check: protectedProcedure
+    .input(z.object({ licensePlate: z.string() }))
+    .query(async ({ input }) => {
+      const entry = await isPlateBlacklisted(input.licensePlate);
+      return { isBlacklisted: !!entry, entry };
+    }),
+  
+  stats: protectedProcedure.query(async () => {
+    return getBlacklistStats();
+  }),
+  
+  create: adminProcedure
+    .input(z.object({
+      licensePlate: z.string().min(1).max(20),
+      reason: z.string().optional(),
+      severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+      ownerName: z.string().optional(),
+      vehicleModel: z.string().optional(),
+      vehicleColor: z.string().optional(),
+      notifyOnDetection: z.boolean().optional(),
+      expiresAt: z.date().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await getBlacklistEntryByPlate(input.licensePlate);
+      if (existing) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'This plate is already in the blacklist' });
+      }
+      return createBlacklistEntry({ ...input, addedBy: ctx.user.id });
+    }),
+  
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      licensePlate: z.string().min(1).max(20).optional(),
+      reason: z.string().optional(),
+      severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+      ownerName: z.string().optional(),
+      vehicleModel: z.string().optional(),
+      vehicleColor: z.string().optional(),
+      isActive: z.boolean().optional(),
+      notifyOnDetection: z.boolean().optional(),
+      expiresAt: z.date().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return updateBlacklistEntry(id, data);
+    }),
+  
+  delete: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return deleteBlacklistEntry(input.id);
+    }),
+});
+
 // Recognition router - plate recognition using OpenAI Vision
 const recognitionRouter = router({
   analyze: protectedProcedure
@@ -347,6 +426,54 @@ const recognitionRouter = router({
         const imageKey = `passages/${Date.now()}-${nanoid(8)}.jpg`;
         const { url: photoUrl } = await storagePut(imageKey, imageBuffer, 'image/jpeg');
         
+        // Check if plate is blacklisted first
+        let isBlacklisted = false;
+        let blacklistEntry = null;
+        if (result.plate) {
+          blacklistEntry = await isPlateBlacklisted(result.plate);
+          isBlacklisted = blacklistEntry !== null;
+        }
+        
+        // If blacklisted, handle immediately
+        if (isBlacklisted && blacklistEntry) {
+          // Increment attempt count
+          await incrementBlacklistAttempt(blacklistEntry.id);
+          
+          // Create passage record for blacklisted vehicle
+          const passage = await createPassage({
+            licensePlate: result.plate || 'UNKNOWN',
+            photoUrl,
+            recognizedPlate: result.plate,
+            confidence: result.confidence,
+            isAllowed: false,
+            wasManualOpen: false,
+            barrierOpened: false,
+            openedBy: ctx.user.id,
+            notes: `BLACKLISTED: ${blacklistEntry.reason || 'No reason specified'}`,
+          });
+          
+          // Send enhanced notification for blacklisted vehicle
+          if (blacklistEntry.notifyOnDetection) {
+            await notifyBlacklistDetection({
+              entry: blacklistEntry,
+              photoUrl,
+              timestamp: new Date(),
+            });
+          }
+          
+          return {
+            plate: result.plate,
+            confidence: result.confidence,
+            isAllowed: false,
+            isBlacklisted: true,
+            blacklistEntry,
+            vehicle: null,
+            passageId: passage.id,
+            photoUrl,
+            barrierOpened: false,
+          };
+        }
+        
         // Check if plate is in allowed list
         let isAllowed = false;
         let vehicle = null;
@@ -393,6 +520,8 @@ const recognitionRouter = router({
           plate: result.plate,
           confidence: result.confidence,
           isAllowed,
+          isBlacklisted: false,
+          blacklistEntry: null,
           vehicle,
           passageId: passage.id,
           photoUrl,
@@ -426,6 +555,7 @@ export const appRouter = router({
   barrier: barrierRouter,
   recognition: recognitionRouter,
   telegram: telegramRouter,
+  blacklist: blacklistRouter,
 });
 
 export type AppRouter = typeof appRouter;

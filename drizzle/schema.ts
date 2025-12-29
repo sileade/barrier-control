@@ -108,3 +108,27 @@ export const barrierActions = mysqlTable("barrierActions", {
 
 export type BarrierAction = typeof barrierActions.$inferSelect;
 export type InsertBarrierAction = typeof barrierActions.$inferInsert;
+
+/**
+ * Blacklist table - stores blocked license plates
+ */
+export const blacklist = mysqlTable("blacklist", {
+  id: int("id").autoincrement().primaryKey(),
+  licensePlate: varchar("licensePlate", { length: 20 }).notNull().unique(),
+  reason: text("reason"),
+  severity: mysqlEnum("severity", ["low", "medium", "high", "critical"]).default("medium").notNull(),
+  ownerName: varchar("ownerName", { length: 255 }),
+  vehicleModel: varchar("vehicleModel", { length: 100 }),
+  vehicleColor: varchar("vehicleColor", { length: 50 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  notifyOnDetection: boolean("notifyOnDetection").default(true).notNull(),
+  attemptCount: int("attemptCount").default(0).notNull(),
+  lastAttempt: timestamp("lastAttempt"),
+  addedBy: int("addedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+});
+
+export type BlacklistEntry = typeof blacklist.$inferSelect;
+export type InsertBlacklistEntry = typeof blacklist.$inferInsert;

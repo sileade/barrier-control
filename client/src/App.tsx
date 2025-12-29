@@ -11,6 +11,7 @@ import Passages from "./pages/Passages";
 import BarrierControl from "./pages/BarrierControl";
 import MedicalRecords from "./pages/MedicalRecords";
 import Settings from "./pages/Settings";
+import Blacklist from "./pages/Blacklist";
 
 function Router() {
   return (
@@ -19,6 +20,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/barrier" component={BarrierControl} />
         <Route path="/vehicles" component={Vehicles} />
+        <Route path="/blacklist" component={Blacklist} />
         <Route path="/passages" component={Passages} />
         <Route path="/medical" component={MedicalRecords} />
         <Route path="/settings" component={Settings} />

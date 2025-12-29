@@ -54,3 +54,12 @@
 - [x] Add UI for Telegram configuration in Settings
 - [x] Add test notification button
 - [x] Write unit tests for Telegram integration
+
+## Blacklist Feature
+- [x] Create blacklist table in database schema
+- [x] Add CRUD operations for blacklist management
+- [x] Integrate blacklist check into recognition flow
+- [x] Add enhanced notifications for blacklisted vehicles
+- [x] Create Blacklist management page UI
+- [x] Add blacklist navigation item to sidebar
+- [x] Write unit tests for blacklist feature

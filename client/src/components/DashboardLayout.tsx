@@ -32,7 +32,8 @@ import {
   FileText, 
   Settings,
   Shield,
-  ChevronRight
+  ChevronRight,
+  ShieldBan
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -44,6 +45,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Camera, label: "Barrier Control", path: "/barrier" },
   { icon: Car, label: "Vehicles", path: "/vehicles" },
+  { icon: ShieldBan, label: "Blacklist", path: "/blacklist", adminOnly: true },
   { icon: History, label: "Passages", path: "/passages" },
   { icon: FileText, label: "Medical Records", path: "/medical", adminOnly: true },
   { icon: Settings, label: "Settings", path: "/settings", adminOnly: true },

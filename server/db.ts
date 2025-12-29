@@ -6,7 +6,8 @@ import {
   passages, InsertPassage, Passage,
   medicalRecords, InsertMedicalRecord, MedicalRecord,
   settings, InsertSetting, Setting,
-  barrierActions, InsertBarrierAction, BarrierAction
+  barrierActions, InsertBarrierAction, BarrierAction,
+  blacklist, InsertBlacklistEntry, BlacklistEntry
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -336,4 +337,125 @@ export async function getBarrierActions(limit = 50) {
   if (!db) return [];
   
   return db.select().from(barrierActions).orderBy(desc(barrierActions.timestamp)).limit(limit);
+}
+
+// ============ BLACKLIST OPERATIONS ============
+
+export async function getAllBlacklistEntries(includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  if (includeInactive) {
+    return db.select().from(blacklist).orderBy(desc(blacklist.createdAt));
+  }
+  return db.select().from(blacklist).where(eq(blacklist.isActive, true)).orderBy(desc(blacklist.createdAt));
+}
+
+export async function getBlacklistEntryById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(blacklist).where(eq(blacklist.id, id)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getBlacklistEntryByPlate(licensePlate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const normalizedPlate = licensePlate.toUpperCase().replace(/\s/g, '');
+  const result = await db.select().from(blacklist)
+    .where(and(
+      eq(blacklist.licensePlate, normalizedPlate),
+      eq(blacklist.isActive, true)
+    ))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function isPlateBlacklisted(licensePlate: string): Promise<BlacklistEntry | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const normalizedPlate = licensePlate.toUpperCase().replace(/\s/g, '');
+  const result = await db.select().from(blacklist)
+    .where(and(
+      eq(blacklist.licensePlate, normalizedPlate),
+      eq(blacklist.isActive, true)
+    ))
+    .limit(1);
+  
+  if (result.length === 0) return null;
+  
+  const entry = result[0];
+  
+  // Check if entry has expired
+  if (entry.expiresAt && entry.expiresAt < new Date()) {
+    return null;
+  }
+  
+  return entry;
+}
+
+export async function createBlacklistEntry(entry: InsertBlacklistEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const normalizedPlate = entry.licensePlate.toUpperCase().replace(/\s/g, '');
+  await db.insert(blacklist).values({ ...entry, licensePlate: normalizedPlate });
+  return getBlacklistEntryByPlate(normalizedPlate);
+}
+
+export async function updateBlacklistEntry(id: number, data: Partial<InsertBlacklistEntry>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  if (data.licensePlate) {
+    data.licensePlate = data.licensePlate.toUpperCase().replace(/\s/g, '');
+  }
+  await db.update(blacklist).set(data).where(eq(blacklist.id, id));
+  return getBlacklistEntryById(id);
+}
+
+export async function deleteBlacklistEntry(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Soft delete
+  await db.update(blacklist).set({ isActive: false }).where(eq(blacklist.id, id));
+  return true;
+}
+
+export async function hardDeleteBlacklistEntry(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(blacklist).where(eq(blacklist.id, id));
+  return true;
+}
+
+export async function incrementBlacklistAttempt(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(blacklist)
+    .set({ 
+      attemptCount: sql`attemptCount + 1`,
+      lastAttempt: new Date()
+    })
+    .where(eq(blacklist.id, id));
+  return getBlacklistEntryById(id);
+}
+
+export async function getBlacklistStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, active: 0, totalAttempts: 0 };
+  
+  const result = await db.select({
+    total: sql<number>`COUNT(*)`,
+    active: sql<number>`SUM(CASE WHEN isActive = true THEN 1 ELSE 0 END)`,
+    totalAttempts: sql<number>`SUM(attemptCount)`,
+  }).from(blacklist);
+  
+  return result[0] || { total: 0, active: 0, totalAttempts: 0 };
 }
