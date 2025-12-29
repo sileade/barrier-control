@@ -43,15 +43,15 @@
 }
 
 :root {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-600);
-  --sidebar-primary-foreground: var(--color-blue-50);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
+  --primary: oklch(0.6 0.2 145);
+  --primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.55 0.18 145);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --chart-1: oklch(0.6 0.2 145);
+  --chart-2: oklch(0.65 0.2 220);
+  --chart-3: oklch(0.75 0.15 85);
+  --chart-4: oklch(0.55 0.2 320);
+  --chart-5: oklch(0.6 0.2 25);
   --radius: 0.65rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.235 0.015 65);
@@ -79,10 +79,10 @@
 }
 
 .dark {
-  --primary: var(--color-blue-700);
-  --primary-foreground: var(--color-blue-50);
-  --sidebar-primary: var(--color-blue-500);
-  --sidebar-primary-foreground: var(--color-blue-50);
+  --primary: oklch(0.6 0.2 145);
+  --primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.55 0.18 145);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.85 0.005 65);
   --card: oklch(0.21 0.006 285.885);
@@ -100,11 +100,11 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.488 0.243 264.376);
-  --chart-1: var(--color-blue-300);
-  --chart-2: var(--color-blue-500);
-  --chart-3: var(--color-blue-600);
-  --chart-4: var(--color-blue-700);
-  --chart-5: var(--color-blue-800);
+  --chart-1: oklch(0.6 0.2 145);
+  --chart-2: oklch(0.65 0.2 220);
+  --chart-3: oklch(0.75 0.15 85);
+  --chart-4: oklch(0.55 0.2 320);
+  --chart-5: oklch(0.6 0.2 25);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.85 0.005 65);
   --sidebar-accent: oklch(0.274 0.006 286.033);
@@ -174,4 +174,83 @@
       max-width: 1280px; /* Standard content width */
     }
   }
+}
+
+/* Security monitoring app custom utilities */
+@layer utilities {
+  .status-allowed {
+    color: oklch(0.6 0.2 145);
+    background-color: oklch(0.6 0.2 145 / 10%);
+    border-color: oklch(0.6 0.2 145 / 20%);
+  }
+
+  .status-denied {
+    color: oklch(0.6 0.2 25);
+    background-color: oklch(0.6 0.2 25 / 10%);
+    border-color: oklch(0.6 0.2 25 / 20%);
+  }
+
+  .status-pending {
+    color: oklch(0.75 0.15 85);
+    background-color: oklch(0.75 0.15 85 / 10%);
+    border-color: oklch(0.75 0.15 85 / 20%);
+  }
+
+  .camera-feed {
+    @apply rounded-lg overflow-hidden bg-black;
+    aspect-ratio: 16 / 9;
+  }
+
+  .stat-card {
+    @apply bg-card border border-border rounded-lg p-4 transition-all;
+  }
+
+  .stat-card:hover {
+    border-color: oklch(0.6 0.2 145 / 50%);
+  }
+
+  .pulse-green {
+    animation: pulse-green 2s infinite;
+  }
+
+  @keyframes pulse-green {
+    0%, 100% {
+      box-shadow: 0 0 0 0 oklch(0.6 0.2 145 / 40%);
+    }
+    50% {
+      box-shadow: 0 0 0 10px oklch(0.6 0.2 145 / 0%);
+    }
+  }
+
+  .pulse-red {
+    animation: pulse-red 2s infinite;
+  }
+
+  @keyframes pulse-red {
+    0%, 100% {
+      box-shadow: 0 0 0 0 oklch(0.6 0.2 25 / 40%);
+    }
+    50% {
+      box-shadow: 0 0 0 10px oklch(0.6 0.2 25 / 0%);
+    }
+  }
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: oklch(0.141 0.005 285.823);
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.274 0.006 286.033);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0.01 286);
 }

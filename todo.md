@@ -1,0 +1,42 @@
+# Barrier Control System - TODO
+
+## Core Features
+- [x] User authorization with role-based access (admin/user)
+- [x] Database schema for vehicles, passages, and medical records
+- [x] CRUD operations for allowed vehicle license plates (admin panel)
+- [x] Passage logging with timestamp, license plate, and photo
+- [x] API endpoint for medical database integration (driver name + plate)
+- [x] Real-time video stream display from IP camera
+- [x] Manual barrier opening button with confirmation prompt
+- [x] OpenAI Vision API integration for license plate recognition
+- [x] Automatic barrier opening for recognized allowed plates
+- [x] Monitoring dashboard with passage history and statistics
+- [x] Owner notifications for unknown plates and unauthorized access
+
+## UI Components
+- [x] Dashboard layout with sidebar navigation
+- [x] Vehicle management page (CRUD)
+- [x] Passage logs page with filtering
+- [x] Camera view with live stream
+- [x] Barrier control panel
+- [x] Statistics and analytics view
+- [x] Settings page for camera URL configuration
+
+## API Endpoints
+- [x] vehicles.list - Get all allowed vehicles
+- [x] vehicles.create - Add new vehicle
+- [x] vehicles.update - Update vehicle info
+- [x] vehicles.delete - Remove vehicle
+- [x] passages.list - Get passage history
+- [x] passages.create - Log new passage
+- [x] medicalDb.lookup - Query medical database
+- [x] medicalDb.sync - Sync with medical database
+- [x] barrier.open - Manual barrier control
+- [x] recognition.analyze - Analyze image for plate
+- [x] settings.get/update - System settings
+
+## Testing
+- [x] Unit tests for vehicle CRUD operations
+- [x] Unit tests for passage logging
+- [x] Unit tests for barrier control flow
+- [ ] Integration tests for plate recognition (requires camera)
