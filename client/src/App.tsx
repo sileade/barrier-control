@@ -12,6 +12,7 @@ import BarrierControl from "./pages/BarrierControl";
 import MedicalRecords from "./pages/MedicalRecords";
 import Settings from "./pages/Settings";
 import Blacklist from "./pages/Blacklist";
+import NotificationHistory from "./pages/NotificationHistory";
 
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/passages" component={Passages} />
         <Route path="/medical" component={MedicalRecords} />
         <Route path="/settings" component={Settings} />
+        <Route path="/notifications" component={NotificationHistory} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

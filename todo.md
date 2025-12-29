@@ -81,3 +81,13 @@
 - [x] Allow critical notifications (high/critical blacklist) to bypass quiet hours
 - [x] Update Settings UI with quiet hours configuration
 - [x] Write unit tests for quiet hours feature
+
+## Notification History Feature
+- [x] Create notification_history table in database schema
+- [x] Add API endpoints for listing notification history
+- [x] Add resend notification functionality
+- [x] Create Notification History page UI with filtering
+- [x] Add statistics display (total, sent, pending, failed)
+- [x] Add export to CSV functionality
+- [x] Add navigation item to sidebar
+- [x] Write unit tests for notification history feature

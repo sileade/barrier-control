@@ -27,7 +27,12 @@ import {
   sendPendingSummary, 
   queueOrSendNotification 
 } from "./quietHours";
-import { getPendingNotifications, getPendingNotificationStats } from "./db";
+import { 
+  getPendingNotifications, getPendingNotificationStats,
+  createNotificationHistory, getNotificationHistory, getNotificationHistoryById,
+  updateNotificationHistory, getNotificationHistoryStats, getNotificationHistoryByType
+} from "./db";
+import { sendTelegramMessage } from "./telegramNotification";
 
 // Admin-only procedure
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -837,6 +842,149 @@ const quietHoursRouter = router({
     }),
 });
 
+// Notification History router - tracks all sent notifications
+const notificationHistoryRouter = router({
+  // List all notifications with filtering
+  list: protectedProcedure
+    .input(z.object({
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+      type: z.string().optional(),
+      status: z.string().optional(),
+      startDate: z.date().optional(),
+      endDate: z.date().optional(),
+      licensePlate: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      return getNotificationHistory(input || {});
+    }),
+
+  // Get single notification by ID
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getNotificationHistoryById(input.id);
+    }),
+
+  // Get statistics
+  stats: protectedProcedure.query(async () => {
+    const stats = await getNotificationHistoryStats();
+    const byType = await getNotificationHistoryByType();
+    return { stats, byType };
+  }),
+
+  // Resend a notification
+  resend: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const notification = await getNotificationHistoryById(input.id);
+      if (!notification) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Notification not found' });
+      }
+
+      let emailSent = false;
+      let telegramSent = false;
+      let errorMessage = '';
+
+      try {
+        // Try to send via email
+        const emailResult = await notifyOwner({
+          title: notification.title,
+          content: notification.message,
+        });
+        emailSent = emailResult;
+      } catch (error) {
+        errorMessage += `Email error: ${error instanceof Error ? error.message : 'Unknown error'}. `;
+      }
+
+      try {
+        // Try to send via Telegram if enabled
+        const telegramEnabled = await getSetting('telegram_enabled');
+        if (telegramEnabled?.value === 'true') {
+          telegramSent = await sendTelegramMessage({
+            title: notification.title,
+            content: notification.message,
+            photoUrl: notification.photoUrl || undefined,
+          });
+          if (!telegramSent) {
+            errorMessage += 'Telegram: Failed to send message. ';
+          }
+        }
+      } catch (error) {
+        errorMessage += `Telegram error: ${error instanceof Error ? error.message : 'Unknown error'}. `;
+      }
+
+      const success = emailSent || telegramSent;
+      const channel = emailSent && telegramSent ? 'both' : (emailSent ? 'email' : (telegramSent ? 'telegram' : 'email'));
+
+      // Update the notification history
+      await updateNotificationHistory(notification.id, {
+        status: success ? 'sent' : 'failed',
+        retryCount: (notification.retryCount || 0) + 1,
+        lastRetryAt: new Date(),
+        sentAt: success ? new Date() : undefined,
+        errorMessage: success ? null : errorMessage,
+        channel: channel as any,
+      });
+
+      // Create a new history entry for the resend attempt
+      await createNotificationHistory({
+        type: notification.type,
+        title: `[Resend] ${notification.title}`,
+        message: notification.message,
+        licensePlate: notification.licensePlate,
+        photoUrl: notification.photoUrl,
+        severity: notification.severity,
+        channel: channel as any,
+        status: success ? 'sent' : 'failed',
+        errorMessage: success ? null : errorMessage,
+        sentAt: success ? new Date() : undefined,
+      });
+
+      return {
+        success,
+        emailSent,
+        telegramSent,
+        errorMessage: success ? null : errorMessage,
+      };
+    }),
+
+  // Export notifications as CSV
+  export: protectedProcedure
+    .input(z.object({
+      type: z.string().optional(),
+      status: z.string().optional(),
+      startDate: z.date().optional(),
+      endDate: z.date().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const notifications = await getNotificationHistory({
+        ...input,
+        limit: 10000, // Large limit for export
+      });
+
+      // Generate CSV
+      const headers = ['ID', 'Type', 'Title', 'Message', 'License Plate', 'Severity', 'Channel', 'Status', 'Error', 'Retry Count', 'Created At', 'Sent At'];
+      const rows = notifications.map(n => [
+        n.id,
+        n.type,
+        `"${(n.title || '').replace(/"/g, '""')}"`,
+        `"${(n.message || '').replace(/"/g, '""')}"`,
+        n.licensePlate || '',
+        n.severity,
+        n.channel,
+        n.status,
+        `"${(n.errorMessage || '').replace(/"/g, '""')}"`,
+        n.retryCount,
+        n.createdAt?.toISOString() || '',
+        n.sentAt?.toISOString() || '',
+      ]);
+
+      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      return { csv, count: notifications.length };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -857,6 +1005,7 @@ export const appRouter = router({
   telegram: telegramRouter,
   blacklist: blacklistRouter,
   quietHours: quietHoursRouter,
+  notificationHistory: notificationHistoryRouter,
 });
 
 export type AppRouter = typeof appRouter;

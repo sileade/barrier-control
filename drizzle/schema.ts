@@ -151,3 +151,26 @@ export const pendingNotifications = mysqlTable("pendingNotifications", {
 
 export type PendingNotification = typeof pendingNotifications.$inferSelect;
 export type InsertPendingNotification = typeof pendingNotifications.$inferInsert;
+
+/**
+ * Notification history table - stores all sent notifications for tracking and resending
+ */
+export const notificationHistory = mysqlTable("notificationHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["unknown_vehicle", "blacklist_detected", "manual_open", "unauthorized_access", "daily_summary", "quiet_hours_summary"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  licensePlate: varchar("licensePlate", { length: 20 }),
+  photoUrl: text("photoUrl"),
+  severity: mysqlEnum("severity", ["low", "medium", "high", "critical"]).default("medium").notNull(),
+  channel: mysqlEnum("channel", ["email", "telegram", "both"]).default("email").notNull(),
+  status: mysqlEnum("status", ["sent", "failed", "pending"]).default("pending").notNull(),
+  errorMessage: text("errorMessage"),
+  retryCount: int("retryCount").default(0).notNull(),
+  lastRetryAt: timestamp("lastRetryAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  sentAt: timestamp("sentAt"),
+});
+
+export type NotificationHistoryEntry = typeof notificationHistory.$inferSelect;
+export type InsertNotificationHistoryEntry = typeof notificationHistory.$inferInsert;

@@ -33,7 +33,8 @@ import {
   Settings,
   Shield,
   ChevronRight,
-  ShieldBan
+  ShieldBan,
+  Bell
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -47,6 +48,7 @@ const menuItems = [
   { icon: Car, label: "Vehicles", path: "/vehicles" },
   { icon: ShieldBan, label: "Blacklist", path: "/blacklist", adminOnly: true },
   { icon: History, label: "Passages", path: "/passages" },
+  { icon: Bell, label: "Notifications", path: "/notifications", adminOnly: true },
   { icon: FileText, label: "Medical Records", path: "/medical", adminOnly: true },
   { icon: Settings, label: "Settings", path: "/settings", adminOnly: true },
 ];

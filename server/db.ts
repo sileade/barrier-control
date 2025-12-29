@@ -8,7 +8,8 @@ import {
   settings, InsertSetting, Setting,
   barrierActions, InsertBarrierAction, BarrierAction,
   blacklist, InsertBlacklistEntry, BlacklistEntry,
-  pendingNotifications, InsertPendingNotification, PendingNotification
+  pendingNotifications, InsertPendingNotification, PendingNotification,
+  notificationHistory, InsertNotificationHistoryEntry, NotificationHistoryEntry
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -521,4 +522,100 @@ export async function getPendingNotificationStats() {
   }).from(pendingNotifications);
   
   return result[0] || { pending: 0, sent: 0, total: 0 };
+}
+
+
+// ============ NOTIFICATION HISTORY OPERATIONS ============
+
+export async function createNotificationHistory(entry: InsertNotificationHistoryEntry) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(notificationHistory).values(entry);
+  return { id: Number(result[0].insertId) };
+}
+
+export async function getNotificationHistory(options: {
+  limit?: number;
+  offset?: number;
+  type?: string;
+  status?: string;
+  startDate?: Date;
+  endDate?: Date;
+  licensePlate?: string;
+} = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { limit = 100, offset = 0, type, status, startDate, endDate, licensePlate } = options;
+  
+  const conditions = [];
+  if (type) conditions.push(eq(notificationHistory.type, type as any));
+  if (status) conditions.push(eq(notificationHistory.status, status as any));
+  if (startDate) conditions.push(gte(notificationHistory.createdAt, startDate));
+  if (endDate) conditions.push(lte(notificationHistory.createdAt, endDate));
+  if (licensePlate) conditions.push(like(notificationHistory.licensePlate, `%${licensePlate}%`));
+  
+  const query = conditions.length > 0
+    ? db.select().from(notificationHistory).where(and(...conditions)).orderBy(desc(notificationHistory.createdAt)).limit(limit).offset(offset)
+    : db.select().from(notificationHistory).orderBy(desc(notificationHistory.createdAt)).limit(limit).offset(offset);
+  
+  return query;
+}
+
+export async function getNotificationHistoryById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(notificationHistory).where(eq(notificationHistory.id, id)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function updateNotificationHistory(id: number, data: Partial<InsertNotificationHistoryEntry>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(notificationHistory).set(data).where(eq(notificationHistory.id, id));
+  return getNotificationHistoryById(id);
+}
+
+export async function getNotificationHistoryStats() {
+  const db = await getDb();
+  if (!db) return { total: 0, sent: 0, failed: 0, pending: 0 };
+  
+  const result = await db.select({
+    total: sql<number>`COUNT(*)`,
+    sent: sql<number>`SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END)`,
+    failed: sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`,
+    pending: sql<number>`SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)`,
+  }).from(notificationHistory);
+  
+  return result[0] || { total: 0, sent: 0, failed: 0, pending: 0 };
+}
+
+export async function getNotificationHistoryByType() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select({
+    type: notificationHistory.type,
+    count: sql<number>`COUNT(*)`,
+    sent: sql<number>`SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END)`,
+    failed: sql<number>`SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)`,
+  }).from(notificationHistory)
+    .groupBy(notificationHistory.type);
+  
+  return result;
+}
+
+export async function deleteOldNotificationHistory(olderThanDays = 30) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+  
+  await db.delete(notificationHistory)
+    .where(lte(notificationHistory.createdAt, cutoffDate));
+  return true;
 }
