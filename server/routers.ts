@@ -30,8 +30,17 @@ import {
 import { 
   getPendingNotifications, getPendingNotificationStats,
   createNotificationHistory, getNotificationHistory, getNotificationHistoryById,
-  updateNotificationHistory, getNotificationHistoryStats, getNotificationHistoryByType
+  updateNotificationHistory, getNotificationHistoryStats, getNotificationHistoryByType,
+  getAllBarrierIntegrations, getActiveBarrierIntegrations, getBarrierIntegrationById,
+  createBarrierIntegration, updateBarrierIntegration, deleteBarrierIntegration,
+  getAllCameraIntegrations, getActiveCameraIntegrations, getCameraIntegrationById,
+  createCameraIntegration, updateCameraIntegration, deleteCameraIntegration
 } from "./db";
+import {
+  executeBarrierCommand, executePrimaryBarrierCommand,
+  getCameraSnapshot, getCameraStreamInfo, getPrimaryCameraSnapshot,
+  testBarrierConnection, testCameraConnection
+} from "./integrationService";
 import { sendTelegramMessage } from "./telegramNotification";
 
 // Admin-only procedure
@@ -985,6 +994,191 @@ const notificationHistoryRouter = router({
     }),
 });
 
+// Barrier Integrations router
+const barrierIntegrationsRouter = router({
+  list: protectedProcedure.query(async () => {
+    return getAllBarrierIntegrations();
+  }),
+
+  listActive: protectedProcedure.query(async () => {
+    return getActiveBarrierIntegrations();
+  }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getBarrierIntegrationById(input.id);
+    }),
+
+  create: adminProcedure
+    .input(z.object({
+      name: z.string().min(1).max(100),
+      type: z.enum(['came', 'nice', 'bft', 'doorhan', 'gpio', 'custom_http']),
+      isActive: z.boolean().optional(),
+      isPrimary: z.boolean().optional(),
+      host: z.string().optional(),
+      port: z.number().optional(),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      apiEndpoint: z.string().optional(),
+      apiKey: z.string().optional(),
+      openCommand: z.string().optional(),
+      closeCommand: z.string().optional(),
+      statusCommand: z.string().optional(),
+      gpioPin: z.number().optional(),
+      gpioActiveHigh: z.boolean().optional(),
+      openDuration: z.number().optional(),
+      timeout: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return createBarrierIntegration(input);
+    }),
+
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(100).optional(),
+      type: z.enum(['came', 'nice', 'bft', 'doorhan', 'gpio', 'custom_http']).optional(),
+      isActive: z.boolean().optional(),
+      isPrimary: z.boolean().optional(),
+      host: z.string().optional(),
+      port: z.number().optional(),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      apiEndpoint: z.string().optional(),
+      apiKey: z.string().optional(),
+      openCommand: z.string().optional(),
+      closeCommand: z.string().optional(),
+      statusCommand: z.string().optional(),
+      gpioPin: z.number().optional(),
+      gpioActiveHigh: z.boolean().optional(),
+      openDuration: z.number().optional(),
+      timeout: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return updateBarrierIntegration(id, data);
+    }),
+
+  delete: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return deleteBarrierIntegration(input.id);
+    }),
+
+  test: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return testBarrierConnection(input.id);
+    }),
+
+  execute: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      action: z.enum(['open', 'close', 'status']),
+    }))
+    .mutation(async ({ input }) => {
+      return executeBarrierCommand(input.id, input.action);
+    }),
+
+  executePrimary: protectedProcedure
+    .input(z.object({ action: z.enum(['open', 'close', 'status']) }))
+    .mutation(async ({ input }) => {
+      return executePrimaryBarrierCommand(input.action);
+    }),
+});
+
+// Camera Integrations router
+const cameraIntegrationsRouter = router({
+  list: protectedProcedure.query(async () => {
+    return getAllCameraIntegrations();
+  }),
+
+  listActive: protectedProcedure.query(async () => {
+    return getActiveCameraIntegrations();
+  }),
+
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getCameraIntegrationById(input.id);
+    }),
+
+  create: adminProcedure
+    .input(z.object({
+      name: z.string().min(1).max(100),
+      type: z.enum(['hikvision', 'dahua', 'axis', 'onvif', 'custom_rtsp', 'custom_http']),
+      isActive: z.boolean().optional(),
+      isPrimary: z.boolean().optional(),
+      host: z.string().optional(),
+      port: z.number().optional(),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      rtspUrl: z.string().optional(),
+      httpSnapshotUrl: z.string().optional(),
+      streamChannel: z.number().optional(),
+      streamSubtype: z.number().optional(),
+      recognitionEnabled: z.boolean().optional(),
+      recognitionInterval: z.number().optional(),
+      recognitionConfidenceThreshold: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return createCameraIntegration(input);
+    }),
+
+  update: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(100).optional(),
+      type: z.enum(['hikvision', 'dahua', 'axis', 'onvif', 'custom_rtsp', 'custom_http']).optional(),
+      isActive: z.boolean().optional(),
+      isPrimary: z.boolean().optional(),
+      host: z.string().optional(),
+      port: z.number().optional(),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      rtspUrl: z.string().optional(),
+      httpSnapshotUrl: z.string().optional(),
+      streamChannel: z.number().optional(),
+      streamSubtype: z.number().optional(),
+      recognitionEnabled: z.boolean().optional(),
+      recognitionInterval: z.number().optional(),
+      recognitionConfidenceThreshold: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return updateCameraIntegration(id, data);
+    }),
+
+  delete: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return deleteCameraIntegration(input.id);
+    }),
+
+  test: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      return testCameraConnection(input.id);
+    }),
+
+  snapshot: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getCameraSnapshot(input.id);
+    }),
+
+  snapshotPrimary: protectedProcedure.query(async () => {
+    return getPrimaryCameraSnapshot();
+  }),
+
+  streamInfo: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      return getCameraStreamInfo(input.id);
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1006,6 +1200,8 @@ export const appRouter = router({
   blacklist: blacklistRouter,
   quietHours: quietHoursRouter,
   notificationHistory: notificationHistoryRouter,
+  barrierIntegrations: barrierIntegrationsRouter,
+  cameraIntegrations: cameraIntegrationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -619,3 +619,176 @@ export async function deleteOldNotificationHistory(olderThanDays = 30) {
     .where(lte(notificationHistory.createdAt, cutoffDate));
   return true;
 }
+
+
+// ============ BARRIER INTEGRATIONS OPERATIONS ============
+
+import { 
+  barrierIntegrations, InsertBarrierIntegration, BarrierIntegration,
+  cameraIntegrations, InsertCameraIntegration, CameraIntegration
+} from "../drizzle/schema";
+
+export async function getAllBarrierIntegrations() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(barrierIntegrations).orderBy(desc(barrierIntegrations.createdAt));
+}
+
+export async function getActiveBarrierIntegrations() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(barrierIntegrations)
+    .where(eq(barrierIntegrations.isActive, true))
+    .orderBy(desc(barrierIntegrations.isPrimary));
+}
+
+export async function getPrimaryBarrierIntegration() {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(barrierIntegrations)
+    .where(and(eq(barrierIntegrations.isActive, true), eq(barrierIntegrations.isPrimary, true)))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getBarrierIntegrationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(barrierIntegrations)
+    .where(eq(barrierIntegrations.id, id))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function createBarrierIntegration(integration: InsertBarrierIntegration) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // If this is set as primary, unset other primaries
+  if (integration.isPrimary) {
+    await db.update(barrierIntegrations).set({ isPrimary: false });
+  }
+  
+  const result = await db.insert(barrierIntegrations).values(integration);
+  return { id: Number(result[0].insertId) };
+}
+
+export async function updateBarrierIntegration(id: number, data: Partial<InsertBarrierIntegration>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // If setting as primary, unset other primaries
+  if (data.isPrimary) {
+    await db.update(barrierIntegrations).set({ isPrimary: false });
+  }
+  
+  await db.update(barrierIntegrations).set(data).where(eq(barrierIntegrations.id, id));
+  return getBarrierIntegrationById(id);
+}
+
+export async function deleteBarrierIntegration(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(barrierIntegrations).where(eq(barrierIntegrations.id, id));
+  return true;
+}
+
+export async function updateBarrierIntegrationStatus(id: number, status: 'online' | 'offline' | 'error' | 'unknown', error?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(barrierIntegrations).set({
+    lastStatus: status,
+    lastStatusCheck: new Date(),
+    lastError: error || null,
+  }).where(eq(barrierIntegrations.id, id));
+}
+
+// ============ CAMERA INTEGRATIONS OPERATIONS ============
+
+export async function getAllCameraIntegrations() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(cameraIntegrations).orderBy(desc(cameraIntegrations.createdAt));
+}
+
+export async function getActiveCameraIntegrations() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(cameraIntegrations)
+    .where(eq(cameraIntegrations.isActive, true))
+    .orderBy(desc(cameraIntegrations.isPrimary));
+}
+
+export async function getPrimaryCameraIntegration() {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(cameraIntegrations)
+    .where(and(eq(cameraIntegrations.isActive, true), eq(cameraIntegrations.isPrimary, true)))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function getCameraIntegrationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(cameraIntegrations)
+    .where(eq(cameraIntegrations.id, id))
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function createCameraIntegration(integration: InsertCameraIntegration) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // If this is set as primary, unset other primaries
+  if (integration.isPrimary) {
+    await db.update(cameraIntegrations).set({ isPrimary: false });
+  }
+  
+  const result = await db.insert(cameraIntegrations).values(integration);
+  return { id: Number(result[0].insertId) };
+}
+
+export async function updateCameraIntegration(id: number, data: Partial<InsertCameraIntegration>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // If setting as primary, unset other primaries
+  if (data.isPrimary) {
+    await db.update(cameraIntegrations).set({ isPrimary: false });
+  }
+  
+  await db.update(cameraIntegrations).set(data).where(eq(cameraIntegrations.id, id));
+  return getCameraIntegrationById(id);
+}
+
+export async function deleteCameraIntegration(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(cameraIntegrations).where(eq(cameraIntegrations.id, id));
+  return true;
+}
+
+export async function updateCameraIntegrationStatus(id: number, status: 'online' | 'offline' | 'error' | 'unknown', error?: string, snapshot?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(cameraIntegrations).set({
+    lastStatus: status,
+    lastStatusCheck: new Date(),
+    lastError: error || null,
+    lastSnapshot: snapshot || null,
+  }).where(eq(cameraIntegrations.id, id));
+}

@@ -13,6 +13,7 @@ import MedicalRecords from "./pages/MedicalRecords";
 import Settings from "./pages/Settings";
 import Blacklist from "./pages/Blacklist";
 import NotificationHistory from "./pages/NotificationHistory";
+import Integrations from "./pages/Integrations";
 
 function Router() {
   return (
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/medical" component={MedicalRecords} />
         <Route path="/settings" component={Settings} />
         <Route path="/notifications" component={NotificationHistory} />
+        <Route path="/integrations" component={Integrations} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

@@ -91,3 +91,15 @@
 - [x] Add export to CSV functionality
 - [x] Add navigation item to sidebar
 - [x] Write unit tests for notification history feature
+
+## Hardware Integrations Feature
+- [x] Create integrations database schema for barriers and cameras
+- [x] Add barrier integrations: CAME, Nice, BFT, Doorhan, GPIO, Custom HTTP
+- [x] Add camera integrations: Hikvision, Dahua, Axis, ONVIF, Custom RTSP/HTTP
+- [x] Create integration service with modular architecture
+- [x] Create Integrations page with clickable cards for each integration type
+- [x] Add configuration dialogs for each integration
+- [x] Add connection testing functionality
+- [x] Add status indicators for active integrations
+- [x] Update navigation with Integrations menu item
+- [x] Write unit tests for integrations feature

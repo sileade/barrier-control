@@ -174,3 +174,75 @@ export const notificationHistory = mysqlTable("notificationHistory", {
 
 export type NotificationHistoryEntry = typeof notificationHistory.$inferSelect;
 export type InsertNotificationHistoryEntry = typeof notificationHistory.$inferInsert;
+
+/**
+ * Barrier integrations table - stores barrier hardware configurations
+ */
+export const barrierIntegrations = mysqlTable("barrierIntegrations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  type: mysqlEnum("type", ["came", "nice", "bft", "doorhan", "gpio", "custom_http"]).notNull(),
+  isActive: boolean("isActive").default(false).notNull(),
+  isPrimary: boolean("isPrimary").default(false).notNull(),
+  // Connection settings
+  host: varchar("host", { length: 255 }),
+  port: int("port"),
+  username: varchar("username", { length: 100 }),
+  password: varchar("password", { length: 255 }),
+  // API settings
+  apiEndpoint: text("apiEndpoint"),
+  apiKey: varchar("apiKey", { length: 255 }),
+  openCommand: varchar("openCommand", { length: 255 }),
+  closeCommand: varchar("closeCommand", { length: 255 }),
+  statusCommand: varchar("statusCommand", { length: 255 }),
+  // GPIO settings
+  gpioPin: int("gpioPin"),
+  gpioActiveHigh: boolean("gpioActiveHigh").default(true),
+  // Timing settings
+  openDuration: int("openDuration").default(5000), // milliseconds
+  timeout: int("timeout").default(10000), // milliseconds
+  // Status
+  lastStatus: mysqlEnum("lastStatus", ["online", "offline", "error", "unknown"]).default("unknown"),
+  lastStatusCheck: timestamp("lastStatusCheck"),
+  lastError: text("lastError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BarrierIntegration = typeof barrierIntegrations.$inferSelect;
+export type InsertBarrierIntegration = typeof barrierIntegrations.$inferInsert;
+
+/**
+ * Camera integrations table - stores camera hardware configurations
+ */
+export const cameraIntegrations = mysqlTable("cameraIntegrations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  type: mysqlEnum("type", ["hikvision", "dahua", "axis", "onvif", "custom_rtsp", "custom_http"]).notNull(),
+  isActive: boolean("isActive").default(false).notNull(),
+  isPrimary: boolean("isPrimary").default(false).notNull(),
+  // Connection settings
+  host: varchar("host", { length: 255 }),
+  port: int("port"),
+  username: varchar("username", { length: 100 }),
+  password: varchar("password", { length: 255 }),
+  // Stream settings
+  rtspUrl: text("rtspUrl"),
+  httpSnapshotUrl: text("httpSnapshotUrl"),
+  streamChannel: int("streamChannel").default(1),
+  streamSubtype: int("streamSubtype").default(0), // 0 = main, 1 = sub
+  // Recognition settings
+  recognitionEnabled: boolean("recognitionEnabled").default(true),
+  recognitionInterval: int("recognitionInterval").default(2000), // milliseconds
+  recognitionConfidenceThreshold: int("recognitionConfidenceThreshold").default(70),
+  // Status
+  lastStatus: mysqlEnum("lastStatus", ["online", "offline", "error", "unknown"]).default("unknown"),
+  lastStatusCheck: timestamp("lastStatusCheck"),
+  lastError: text("lastError"),
+  lastSnapshot: text("lastSnapshot"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CameraIntegration = typeof cameraIntegrations.$inferSelect;
+export type InsertCameraIntegration = typeof cameraIntegrations.$inferInsert;
